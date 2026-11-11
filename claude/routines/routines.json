@@ -1,0 +1,4 @@
+{
+  "ping": {"trigger": "trig_01XttsW9zn29Diwu7vMN3drZ", "keychain": "claude-routine-ping",
+           "about": "Alfred test: replies pong + your text; no connectors"}
+}
