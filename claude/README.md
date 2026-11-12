@@ -61,24 +61,32 @@ On demand only; nothing watches Downloads.
 
 - `pplx` takes the newest `.zip`/`.md`/`.pdf` in `~/Downloads` (or `pplx <path>`), SHA-256 hashes it, copies it to
   `$PPLX_BASE/<slug>-<date>/` (workflow variable, default `~/Dropbox/COWORK/_HYBRID/reports`), and writes
-  `SHA256SUMS.txt` + `INTAKE.json` there. A zip is extracted into a fresh `extracted/` inside that folder as
-  untrusted data (no absolute paths, no `..`, no symlinks, bounded size). The original stays in Downloads; filing the
-  same file twice in a row is a no-op.
-- Header block (optional): any `PPLX-TAGS:` line in the first 40 lines, e.g.
-  `PPLX-TAGS: matter=Smith v. Jones; topic=lien reduction; mode=research`, names the folder
-  `smith-v-jones-lien-reduction-<date>` (`date=YYYY-MM-DD` overrides). Without one: file name + date.
-- `pplx read [folder]` re-checks the copy's SHA-256, then runs three readers on the Messages API with ask.py's model,
+  `SHA256SUMS.txt` + `INTAKE.json` there. A zip is extracted as untrusted data (no absolute paths, no `..`, no
+  symlinks, bounded size) into a fresh owner-only scratch dir **outside Dropbox** (`$PPLX_SCRATCH`, default
+  `~/Library/Caches/pplx/`, else `$TMPDIR/pplx/`); `INTAKE.json` records that path and a SHA-256 manifest of every
+  extracted file. The reports folder holds only the hashed original, `SHA256SUMS.txt`, `INTAKE.json` and later
+  `REPORT.md`/`READERS.json`. A refused or failed intake removes its half-filed reports folder and scratch dir. The
+  original stays in Downloads; filing the same file twice in a row is a no-op.
+- Header block (optional): the **first** `PPLX-TAGS:` line in the first 40 lines, e.g.
+  `PPLX-TAGS: matter=lien-enforceability; topic=medical-lien-ca; mode=DR; date=2026-11-12`, names the folder
+  `lien-enforceability-medical-lien-ca-2026-11-12` (`date=YYYY-MM-DD` overrides today). A line that still holds a
+  template placeholder (`<generic slug>`, `<topic>`, `<DR|council|regular>`, `<YYYY-MM-DD>`) is Perplexity echoing
+  the prompt and is skipped. `mode` is `DR`, `council` or `regular`; anything else is filed with a warning. Without a
+  usable line: file name + date.
+- `pplx read [folder]` re-checks the copy's SHA-256 and re-hashes the extracted files against the manifest (refusing
+  on any changed, missing or extra file; re-extracting from the hashed copy if the scratch dir was cleared), then
+  runs three readers on the Messages API with ask.py's model,
   API version, headers and fallback (effort high, Keychain `anthropic-api-ultra`): (1) the main report line by line,
   (2) its tables/CSVs for fidelity (skipped when there are none), (3) a claims list for a later live check. It writes
   `REPORT.md` (Agree / Conflict / New / Red flags / Open questions / Claims for live check) and `READERS.json` (raw
   replies) next to the hashed copy. PDFs go as a base64 `document` block.
-- Cost cap: refuses a run estimated over ~200K input tokens (chars/4; a PDF counts ~2,000 tokens a page) before
-  anything is sent. Each reader logs one line to the same usage log (7th field `ultra`), so `ca usage` includes it.
+- Cost cap: refuses any single reader input over ~200K tokens (chars/4; a PDF counts ~2,000 tokens a page) before
+  any Keychain read or API call. Each reader logs one line to the same usage log (7th field `ultra`), so `ca usage` includes it.
 - `pplx open` opens the last intake folder; `pplxhelp` lists the commands.
 
 `pplx.py` imports `ask.py` (from `../ask/src`, or next to it inside the workflow) rather than copying its helpers.
 
-    cd claude/pplx && /usr/bin/python3 test_pplx.py     # 9 offline tests (urlopen and the key mocked)
+    cd claude/pplx && /usr/bin/python3 test_pplx.py     # 15 offline tests (urlopen and the key mocked)
     /usr/bin/python3 build_pplx.py                      # rebuild "Claude PPLX.alfredworkflow"
 
 Installing either workflow is JV's click (double-click the `.alfredworkflow`).

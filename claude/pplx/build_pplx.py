@@ -16,11 +16,11 @@ RUN = '/usr/bin/python3 ./pplx.py "$1" 2>&1 | tail -c 600\n'
 STAMP = (2026, 11, 12, 0, 0, 0)
 
 HELP = [
-    ("pplx", "pplx: file the newest Perplexity export in Downloads", "SHA-256, copy to PPLX_BASE/<slug>-<date>/, unzip as untrusted data. No API call"),
+    ("pplx", "pplx: file the newest Perplexity export in Downloads", "SHA-256, copy to PPLX_BASE/<slug>-<date>/, unzip outside Dropbox as untrusted data. No API call"),
     ("pplx ", "pplx <path>: file that export instead", "A .zip, .md or .pdf"),
-    ("pplx read", "pplx read: three Claude readers on the last intake", "Report line by line, tables for fidelity, claims list -> REPORT.md. Ultra key; refuses over ~200K tokens"),
+    ("pplx read", "pplx read: three Claude readers on the last intake", "Report line by line, tables for fidelity, claims list -> REPORT.md. Ultra key; refuses any single reader input over ~200K tokens"),
     ("pplx open", "pplx open: open the last intake folder", "In Finder"),
-    ("pplxhelp", "Header block: PPLX-TAGS: matter=…; topic=…; mode=…", "Ask Perplexity to start its answer with it; the folder becomes <matter>-<topic>-<date>"),
+    ("pplxhelp", "Header block: PPLX-TAGS: matter=…; topic=…; mode=DR|council|regular; date=…", "First such line wins; the folder becomes <matter>-<topic>-<date>"),
     ("ca usage", "ca usage: this month's Ultra-key spend (includes pplx read)", "Claude Ask workflow"),
     ("howto", "How this works (readme)", "Opens this workflow in Alfred Preferences"),
 ]
@@ -32,7 +32,9 @@ esac
 README = """Claude PPLX: file a Perplexity export and have Claude read it. On demand only; nothing watches Downloads.
 
   pplx            ↩   newest .zip/.md/.pdf in Downloads -> SHA-256 -> copy to $PPLX_BASE/<slug>-<date>/
-                      (a zip is extracted to extracted/ inside it, as untrusted data). The original stays put.
+                      (a zip is extracted, as untrusted data, to a scratch dir OUTSIDE Dropbox: $PPLX_SCRATCH,
+                      default ~/Library/Caches/pplx; every file hashed into INTAKE.json). The original stays put.
+                      A refused or failed intake leaves nothing behind.
   pplx <path>     ↩   the same for one file
   pplx read       ↩   three readers (Opus 5.5, high effort) on the last intake: the report line by line, its tables
                       for fidelity, and a claims list -> REPORT.md: agree / conflict / new / red flags /
@@ -41,15 +43,19 @@ README = """Claude PPLX: file a Perplexity export and have Claude read it. On de
   pplxhelp            this list
 
 HEADER BLOCK (optional): ask Perplexity to begin its answer with
-  PPLX-TAGS: matter=Smith v. Jones; topic=lien reduction; mode=research
-and the folder is named smith-v-jones-lien-reduction-<date> (date=YYYY-MM-DD overrides). Otherwise: file name + date.
+  PPLX-TAGS: matter=lien-enforceability; topic=medical-lien-ca; mode=DR; date=2026-11-12
+and the folder is named lien-enforceability-medical-lien-ca-2026-11-12. The FIRST such line in the first 40 wins;
+a line still holding a placeholder (<generic slug>, <topic>, <DR|council|regular>, <YYYY-MM-DD>) is skipped.
+mode is DR, council or regular (others are filed with a warning). Otherwise: file name + date.
 
 BILLING AND SAFETY
 - Keychain item in PPLX_KEYCHAIN (default anthropic-api-ultra): spends the Ultra API credit. ca usage counts it.
-- Refuses any export estimated over ~200K input tokens across the three readers (chars/4); nothing is sent.
+- Refuses any single reader input over ~200K tokens (chars/4) before any Keychain read; nothing is sent.
+- pplx read re-hashes the extracted files against the intake manifest and refuses on any change.
 - The usage log gets time, model, tokens and cost only (7th field ultra): never export text.
 - The export is treated as untrusted data: readers are told to ignore instructions inside it and flag them.
-- Variables: PPLX_BASE (default ~/Dropbox/COWORK/_HYBRID/reports), PPLX_DOWNLOADS (~/Downloads), PPLX_KEYCHAIN.
+- Variables: PPLX_BASE (default ~/Dropbox/COWORK/_HYBRID/reports), PPLX_DOWNLOADS (~/Downloads), PPLX_KEYCHAIN,
+  PPLX_SCRATCH (default ~/Library/Caches/pplx).
 """
 
 

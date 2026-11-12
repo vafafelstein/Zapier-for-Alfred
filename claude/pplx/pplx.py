@@ -2,19 +2,26 @@
 """pplx.py: file a Perplexity export and have Claude read it (WO-3, option A). On demand only; no watcher.
 
     pplx [path]          take the newest .zip/.md/.pdf in ~/Downloads (or [path]), SHA-256 it, copy it to
-                         $PPLX_BASE/<slug>-<date>/ and extract a zip into <that folder>/extracted/ (untrusted data)
-    pplx read [folder]   three Claude readers on the last intake (or [folder]): (1) the main report line by line,
+                         $PPLX_BASE/<slug>-<date>/; a zip is extracted (untrusted data) into a fresh scratch dir
+                         OUTSIDE Dropbox ($PPLX_SCRATCH, default ~/Library/Caches/pplx or $TMPDIR/pplx), each
+                         extracted file hashed into INTAKE.json's manifest. A failed intake leaves nothing behind.
+    pplx read [folder]   three Claude readers on the last intake (or [folder]), reading the extracted files from
+                         the scratch dir after re-hashing them against the manifest: (1) the main report line by line,
                          (2) its tables/CSVs for fidelity, (3) a claims list for a later live check; writes REPORT.md
                          (agree / conflict / new / red flags / open questions / claims) next to the hashed copy
     pplx open            open the last intake folder in Finder
 
-Header block (optional): lines near the top of the export (the first 40) of the form
-    PPLX-TAGS: matter=Smith v. Jones; topic=lien reduction; mode=research
-name the folder <matter>-<topic>-<date> (date= YYYY-MM-DD overrides the date). Without one: <file name>-<date>.
+Header block (optional): the FIRST line of the form
+    PPLX-TAGS: matter=lien-enforceability; topic=medical-lien-ca; mode=DR; date=2026-11-12
+in the first 40 lines names the folder <matter>-<topic>-<date> (date=YYYY-MM-DD overrides today). A line still
+holding a template placeholder (<generic slug>, <topic>, <DR|council|regular>, <YYYY-MM-DD>) is Perplexity echoing
+the prompt and is skipped. mode is DR, council or regular; any other value is kept with a warning, never refused.
+Without a usable line: <file name>-<date>.
 
 Reuses ask.py (claude/ask/src, shipped next to this file in the workflow) for the model, API version, headers,
 Keychain read and the usage log. Key: Keychain $PPLX_KEYCHAIN (default anthropic-api-ultra), never printed or
-logged; the log line holds no export text (7th field ultra). Per-run cap: about 200K input tokens (chars/4).
+logged; the log line holds no export text (7th field ultra). Cap: refuses before any key read or API call if any
+single reader's input is over about 200K tokens (chars/4).
 Stdlib only (/usr/bin/python3).
 """
 import base64
@@ -27,6 +34,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 import zipfile
@@ -50,6 +58,8 @@ MAX_OUT = 16000
 HEAD_LINES = 40
 ZIP_MAX_FILES, ZIP_MAX_BYTES = 2000, 500 * 1024 * 1024
 TAG_RE = re.compile(r"^[\s>#*_`-]*PPLX-TAGS:\s*(.+?)[\s`*_]*$", re.I)
+PLACEHOLDERS = ("<generic slug>", "<topic>", "<DR|council|regular>", "<YYYY-MM-DD>")
+MODES = ("DR", "council", "regular")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 SECTIONS = (("agree", "Agree"), ("conflict", "Conflict"), ("new", "New"),
             ("red_flags", "Red flags"), ("open_questions", "Open questions"))
@@ -65,6 +75,15 @@ def downloads_dir():
 
 def keysvc():
     return os.environ.get("PPLX_KEYCHAIN") or "anthropic-api-ultra"
+
+
+def scratch_root():
+    """Where untrusted zips are extracted: never the Dropbox-synced reports folder."""
+    env = os.environ.get("PPLX_SCRATCH")
+    if env:
+        return os.path.expanduser(env)
+    caches = os.path.join(HOME, "Library", "Caches")
+    return os.path.join(caches if os.path.isdir(caches) else tempfile.gettempdir(), "pplx")
 
 
 # ---------- intake ----------
@@ -101,18 +120,28 @@ def slugify(s, limit=60):
 
 
 def parse_tags(text):
-    """Merge every PPLX-TAGS line in the first HEAD_LINES lines into {key: value}."""
-    tags = {}
+    """{key: value} from the FIRST usable PPLX-TAGS line in the first HEAD_LINES lines. A line still holding a
+    template placeholder is the prompt echoed back, not a header: skip it and keep looking."""
     for line in (text or "").lstrip("\ufeff").splitlines()[:HEAD_LINES]:
         m = TAG_RE.match(line)
-        if not m:
+        if not m or any(ph.lower() in m.group(1).lower() for ph in PLACEHOLDERS):
             continue
+        tags = {}
         for part in m.group(1).split(";"):
             k, sep, v = part.partition("=")
             k = re.sub(r"[^a-z_]", "", k.strip().lower())
             if sep and k and v.strip():
                 tags[k] = v.strip()[:200]
-    return tags
+        if tags:
+            return tags
+    return {}
+
+
+def tag_warnings(tags):
+    mode = tags.get("mode")
+    if mode and mode.lower() not in (m.lower() for m in MODES):
+        return [f"mode={mode!r} is not one of {'|'.join(MODES)}; filed anyway"]
+    return []
 
 
 def folder_name(tags, filename, today):
@@ -172,6 +201,31 @@ def safe_extract(zpath, dest):
     return dest
 
 
+def extract_to_scratch(zpath, label):
+    """Extract into a fresh owner-only dir under scratch_root(): (scratch dir, extracted dir, manifest).
+    On any failure the scratch dir is removed before the error propagates."""
+    root = scratch_root()
+    os.makedirs(root, mode=0o700, exist_ok=True)
+    scratch = tempfile.mkdtemp(prefix=(slugify(label, 40) or "pplx") + "-", dir=root)
+    try:
+        extracted = safe_extract(zpath, os.path.join(scratch, "extracted"))
+        return scratch, extracted, hash_tree(extracted)
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+
+
+def hash_tree(root):
+    """{relative path: sha256} for every regular file under root (symlinks are listed so they fail the check)."""
+    out = {}
+    for d, _, ns in os.walk(root):
+        for n in ns:
+            p = os.path.join(d, n)
+            rel = os.path.relpath(p, root).replace(os.sep, "/")
+            out[rel] = "symlink" if os.path.islink(p) else sha256(p)
+    return out
+
+
 def intake(path=None, base=None, today=None, now=None):
     src = os.path.expanduser(path) if path else newest_export(downloads_dir())
     if not os.path.isfile(src) or not src.lower().endswith(EXTS):
@@ -194,19 +248,28 @@ def intake(path=None, base=None, today=None, now=None):
     while os.path.exists(dest):
         dest, n = os.path.join(base, f"{name}-{n}"), n + 1
     os.makedirs(dest)
-    copy = os.path.join(dest, os.path.basename(src))
-    shutil.copy2(src, copy)
-    if sha256(copy) != digest:
-        raise Bad("the copy's SHA-256 does not match the original; nothing should be trusted here")
-    with open(os.path.join(dest, "SHA256SUMS.txt"), "w", encoding="utf-8") as fh:
-        fh.write(f"{digest}  {os.path.basename(copy)}\n")
-    extracted = safe_extract(copy, os.path.join(dest, "extracted")) if copy.lower().endswith(".zip") else ""
-    rec = {"source": src, "file": os.path.basename(copy), "sha256": digest, "size": os.path.getsize(copy),
-           "tags": tags, "extracted": "extracted" if extracted else "",
-           "filed_at": (now or dt.datetime.now().astimezone()).isoformat(timespec="seconds")}
-    with open(os.path.join(dest, "INTAKE.json"), "w", encoding="utf-8") as fh:
-        json.dump(rec, fh, indent=2, ensure_ascii=False)
-        fh.write("\n")
+    scratch = ""
+    try:
+        copy = os.path.join(dest, os.path.basename(src))
+        shutil.copy2(src, copy)
+        if sha256(copy) != digest:
+            raise Bad("the copy's SHA-256 does not match the original; nothing should be trusted here")
+        with open(os.path.join(dest, "SHA256SUMS.txt"), "w", encoding="utf-8") as fh:
+            fh.write(f"{digest}  {os.path.basename(copy)}\n")
+        extracted, manifest = "", {}
+        if copy.lower().endswith(".zip"):
+            scratch, extracted, manifest = extract_to_scratch(copy, os.path.basename(dest))
+        rec = {"source": src, "file": os.path.basename(copy), "sha256": digest, "size": os.path.getsize(copy),
+               "tags": tags, "warnings": tag_warnings(tags), "extracted": extracted, "manifest": manifest,
+               "filed_at": (now or dt.datetime.now().astimezone()).isoformat(timespec="seconds")}
+        with open(os.path.join(dest, "INTAKE.json"), "w", encoding="utf-8") as fh:
+            json.dump(rec, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)
+        if scratch:
+            shutil.rmtree(scratch, ignore_errors=True)
+        raise
     os.makedirs(STATE, exist_ok=True)
     with open(LAST, "w", encoding="utf-8") as fh:
         fh.write(dest + "\n")
@@ -249,13 +312,18 @@ def gather(folder, rec):
     if sha256(copy) != rec["sha256"]:
         raise Bad(f"{rec['file']} no longer matches its intake SHA-256; refusing to read it")
     files = []
-    if rec.get("extracted"):
-        root = os.path.join(folder, rec["extracted"])
-        for d, _, ns in os.walk(root):
-            for n in sorted(ns):
-                p = os.path.join(d, n)
-                if not os.path.islink(p):
-                    files.append((os.path.relpath(p, root), p))
+    if copy.lower().endswith(".zip"):
+        manifest = rec.get("manifest")
+        if not isinstance(manifest, dict) or not manifest:
+            raise Bad("INTAKE.json has no extraction manifest; file the export again with pplx")
+        root = rec.get("extracted") or ""
+        if not (os.path.isabs(root) and os.path.isdir(root)):
+            # scratch was cleared (cache purge, reboot): re-extract the hashed copy, then hold it to the manifest
+            root = extract_to_scratch(copy, os.path.basename(folder.rstrip(os.sep)))[1]
+        if hash_tree(root) != manifest:
+            raise Bad(f"the extracted files in {root} no longer match the intake manifest; refusing to read them")
+        for rel in sorted(manifest):
+            files.append((rel, os.path.join(root, *rel.split("/"))))
     else:
         files.append((rec["file"], copy))
     names = [r for r, _ in files]
@@ -417,10 +485,12 @@ def read(folder=None, get_key=None, opener=urllib.request.urlopen, now=None):
         raise Bad("no report (.md/.txt/.pdf) found in the export")
     main_t, tab_t = est_tokens(g)
     readers = [r for r in READERS if r[0] != "tables" or g["tables"].strip()]
-    est = sum(tab_t if r == "tables" else main_t for r, _ in readers) + 1500 * len(readers)
-    if est > CAP_TOKENS:
-        raise Bad(f"refused: this export is about {est:,} input tokens across {len(readers)} readers "
-                  f"(cap {CAP_TOKENS:,}). Nothing was sent. Trim the export or split it, then pplx read again.")
+    per = {r: (tab_t if r == "tables" else main_t) + 1500 for r, _ in readers}
+    big = max(per, key=per.get)
+    if per[big] > CAP_TOKENS:
+        raise Bad(f"refused: the {big} reader's input is about {per[big]:,} tokens (cap {CAP_TOKENS:,} per reader). "
+                  "Nothing was sent. Trim the export or split it, then pplx read again.")
+    est = sum(per.values())
     svc = keysvc()
     if get_key is None:
         cached = []
@@ -472,7 +542,8 @@ def main(argv=None):
         if dup:
             print(f"Already filed (same SHA-256 {digest[:12]}): {dest}")
         else:
-            print(f"Filed {os.path.basename(dest)} · sha256 {digest[:12]}… · next: pplx read")
+            warn = "".join(f" · warning: {w}" for w in read_intake(dest).get("warnings") or [])
+            print(f"Filed {os.path.basename(dest)} · sha256 {digest[:12]}…{warn} · next: pplx read")
         return 0
     except (Bad, OSError, ValueError, zipfile.BadZipFile) as exc:
         print(f"pplx: {exc}")
