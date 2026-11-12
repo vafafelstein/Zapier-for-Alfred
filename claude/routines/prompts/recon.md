@@ -7,9 +7,10 @@
 > **Filevine, Airtable, Microsoft 365, Dropbox.** Do NOT add Zapier.
 > Checked against: dfensa plugin 1.11.0 (brain marketplace pin `plugin-dist` 2bfc344),
 > `litigation-reconcile` (no version in frontmatter) and `aging-retrospective` 2.3.2, Airtable base
-> `appNMQIz9bNr5Fe9n` schema read 2026-11-12. Written ahead of skill-library PR #174 (draft:
-> `litigation-reconcile` 1.0.0 reads `Phase` `fldUKCeZJIo3fNTbk` and any report version;
-> `aging-retrospective` 2.4.0 pins `Moot/Vacated`). The overrides below hold with either version installed.
+> `appNMQIz9bNr5Fe9n` schema read 2026-11-12. Skill-library PR #174 (merged 2026-11-12:
+> `litigation-reconcile` 1.0.1 reads `Phase` `fldUKCeZJIo3fNTbk`, decides litigation by `Stage`, prefers
+> the exact report subject; `aging-retrospective` 2.4.0 pins `Moot/Vacated`) reaches the seat at the next
+> dfensa release. The overrides below hold with either version installed.
 
 ---
 
@@ -73,8 +74,10 @@ including `Write Ledger`. No Dropbox writes. No Box, GitHub or Docs writes.
 Follow its SKILL.md with these run-specific facts (verified 2026-11-12):
 - The Filevine auto-report's subject is now **"[Filevine] Auto Report: List of Projects with
   litigation bs 3.0 (1)"** from `reminders@filevine.com`, weekly (Mondays ~12:00Z; last seen
-  2026-11-09). It was "… bs 2.0". Search `"List of Projects with litigation"` and accept ANY version
-  suffix ("2.0", "3.0 (1)", or a later rename); take the newest. Never require "2.0". If none in the
+  2026-11-09). It is report 307043, a separate report from 303633 ("bs 3.0") and 290624 ("bs 2.0"),
+  whose auto-delivery JV turned off on 10/26; it is not a rename. Prefer that exact subject. Only if
+  no exact match arrived, fall back to the newest `"List of Projects with litigation"` subject and
+  print the subject used on the page. Never require "2.0". If none in the
   last 8 days, that is a finding. If the `.xlsx` attachment cannot be read through the
   Microsoft 365 connector, say so and run the invariants that do not need it (calendar vs Airtable),
   marking I1/I3 as "partial: report not read".
@@ -85,7 +88,7 @@ Follow its SKILL.md with these run-specific facts (verified 2026-11-12):
   never both). `2026_VERIFIED_PracticePanther: liti…` is "unknown, not read" in the footer.
 - Airtable `Cases` `tbl4Pxvplk5vSTw0H` in base `appNMQIz9bNr5Fe9n`. Read the phase from the
   current `Phase` **`fldUKCeZJIo3fNTbk`**, by field id (B6 cutover, OF13; what `litigation-reconcile`
-  1.0.0 does). If `Phase` is blank while `Phase ID` `fldLfMWlWg0QlrS30` is set, use `Stage`
+  1.0.1 does; it decides litigation from `Stage` = "Litigation"). If `Phase` is blank while `Phase ID` `fldLfMWlWg0QlrS30` is set, use `Stage`
   `fldViJLjRVbDs1jUl`. Never base anything on the frozen `fldfMAEUIYl3BihWV`
   (`ZZ－DELETE－Phase (pre-sync)`, frozen since 2026-10-26; JV may delete it): if the installed skill
   still names it, override it and build `airtable_cases.json`'s `phase` from `fldUKCeZJIo3fNTbk`.
