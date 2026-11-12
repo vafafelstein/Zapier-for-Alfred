@@ -7,7 +7,9 @@
 > **Filevine, Airtable, Microsoft 365, Dropbox.** Do NOT add Zapier.
 > Checked against: dfensa plugin 1.11.0 (brain marketplace pin `plugin-dist` 2bfc344),
 > `litigation-reconcile` (no version in frontmatter) and `aging-retrospective` 2.3.2, Airtable base
-> `appNMQIz9bNr5Fe9n` schema read 2026-11-12.
+> `appNMQIz9bNr5Fe9n` schema read 2026-11-12. Written ahead of skill-library PR #174 (draft:
+> `litigation-reconcile` 1.0.0 reads `Phase` `fldUKCeZJIo3fNTbk` and any report version;
+> `aging-retrospective` 2.4.0 pins `Moot/Vacated`). The overrides below hold with either version installed.
 
 ---
 
@@ -38,7 +40,7 @@ fixes for JV. You never write anything anywhere else. You REPORT; you never reso
 These are the write steps the two skills contain. On this run each one is OFF. Do the read and the
 analysis; where a skill says to write, put the proposed write on the page as a proposal instead.
 
-**aging-retrospective (v2.3.2)**
+**aging-retrospective (v2.3.2, or 2.4.0 once #174 ships)**
 - OFF: §5 / step 7 `WRITE_ROWS` to Airtable `Backlog` (`tblSyIcdAhmktcKxP`): no creates, no updates,
   no `Key` backfill, no `Log` lines. Run `scripts/ledger.py merge ... --emit ops.json` (it never
   writes) and render `ops.json` as a "proposed Backlog changes" table on the page.
@@ -68,9 +70,11 @@ including `Write Ledger`. No Dropbox writes. No Box, GitHub or Docs writes.
 
 ### litigation-reconcile
 Follow its SKILL.md with these run-specific facts (verified 2026-11-12):
-- The Filevine auto-report's subject is now **"List of Projects with litigation bs 3.0 (1)"** from
-  `reminders@filevine.com`, weekly (Mondays ~12:00Z). Search `"litigation bs"`, not "2.0". If none
-  in the last 8 days, that is a finding. If the `.xlsx` attachment cannot be read through the
+- The Filevine auto-report's subject is now **"[Filevine] Auto Report: List of Projects with
+  litigation bs 3.0 (1)"** from `reminders@filevine.com`, weekly (Mondays ~12:00Z; last seen
+  2026-11-09). It was "… bs 2.0". Search `"List of Projects with litigation"` and accept ANY version
+  suffix ("2.0", "3.0 (1)", or a later rename); take the newest. Never require "2.0". If none in the
+  last 8 days, that is a finding. If the `.xlsx` attachment cannot be read through the
   Microsoft 365 connector, say so and run the invariants that do not need it (calendar vs Airtable),
   marking I1/I3 as "partial: report not read".
 - Calendars: per OPERATIONS.md §4, read every "always" calendar by exact name, with a wide-range
@@ -78,23 +82,27 @@ Follow its SKILL.md with these run-specific facts (verified 2026-11-12):
   and its default `Calendar`; `john@thenulaw.com` (the connected mailbox) → default `Calendar`,
   `Filevine Sync`, and `Lit Calendar | DFENSA` (or the `litigationcalendar@thenulaw.com` default,
   never both). `2026_VERIFIED_PracticePanther: liti…` is "unknown, not read" in the footer.
-- Airtable `Cases` `tbl4Pxvplk5vSTw0H` in base `appNMQIz9bNr5Fe9n`. The skill reads
-  `fldfMAEUIYl3BihWV` (now named `ZZ－DELETE－Phase (pre-sync)`, frozen since 2026-10-26). Read
-  BOTH it and the live `Phase` `fldUKCeZJIo3fNTbk`, label which is which, and base I3/I4 on
-  `fldUKCeZJIo3fNTbk` only when that row is fresh (rule 7). If `fldfMAEUIYl3BihWV` no longer exists
-  (JV may delete the `ZZ－DELETE－` fields after 2026-11-10), say so and use `fldUKCeZJIo3fNTbk`.
+- Airtable `Cases` `tbl4Pxvplk5vSTw0H` in base `appNMQIz9bNr5Fe9n`. Read the phase from the
+  current `Phase` **`fldUKCeZJIo3fNTbk`**, by field id (B6 cutover, OF13; what `litigation-reconcile`
+  1.0.0 does). If `Phase` is blank while `Phase ID` `fldLfMWlWg0QlrS30` is set, use `Stage`
+  `fldViJLjRVbDs1jUl`. Never base anything on the frozen `fldfMAEUIYl3BihWV`
+  (`ZZ－DELETE－Phase (pre-sync)`, frozen since 2026-10-26; JV may delete it): if the installed skill
+  still names it, override it and build `airtable_cases.json`'s `phase` from `fldUKCeZJIo3fNTbk`.
+- The Airtable phase is a mirror, labelled "unverified (mirror)" (rule 7). The matter's phase as a
+  FACT comes from Filevine (the report, or a native read). An I3/I4 hit is worded "the Airtable
+  mirror differs from Filevine", never as a fact about the matter.
 - Exclusions: read `/SHARES/ADMIN & MANAGEMENT/GitHub/litigation-reconcile/exclusions.json` from
   Dropbox (read only). If it cannot be read, the report's first line says "exclusions not loaded".
 - Run `scripts/reconcile.py` from the installed plugin. Violations only.
 
 ### aging-retrospective
 Follow its SKILL.md with the write steps in §1 switched off.
-- `READ_SCHEMA(Backlog)` first and compare with the pinned contract. **Known mismatch on
-  2026-11-12:** `Status` `fldqWviAoreqi6wn8` carries a 7th option `Moot/Vacated`
-  (`selnXlMNWeI0r0V6Y`) that BACKLOG-CONTRACT.md does not list. The skill says stop on a mismatch.
-  On this run: do not stop the whole page; stop the aging section, report the mismatch as the
-  section's only finding, and continue with litigation-reconcile and the rules below. (When the
-  contract is updated, this exception goes away.)
+- `READ_SCHEMA(Backlog)` first and compare with the pinned contract. `Status`
+  `fldqWviAoreqi6wn8` carries a 7th option `Moot/Vacated` (`selnXlMNWeI0r0V6Y`, added in the base).
+  `aging-retrospective` 2.4.0 (BACKLOG-CONTRACT v1.3, PR #174) pins it and treats it as CLOSED, like
+  Landed and Dropped. If the installed version is 2.3.2, its contract lacks the option: treat that
+  one difference as known (Moot/Vacated = closed) and run on. Any OTHER mismatch: stop the aging
+  section only, report the mismatch as its only finding, and continue with the rest.
 - Gather read-only (two workers max). Skip the principal's Inbox, as the skill says.
 
 ## 3. The REPORT rules (never resolve)
@@ -115,12 +123,16 @@ check, staying off 14516922 and stopping on 429.
    users:** report them. Never reassign, complete or edit.
 6. **DOL mismatches** between project name, incident date (Filevine, and Airtable `Incident Date`
    `fldQ0kqPwCvBXbF6y`) and vitals; **TEST or lead projects carrying real figures:** report them.
-7. **A stale Airtable mirror is never read as current.** A `Cases` row is current only while
-   `FV Verified At` `fldiZ0dWTLZwZEM58` is under 36 hours old (also show `FV Synced At`
-   `fldrTKNE9xyJfbVN7`). State at the top how many active rows are fresh vs stale and the newest
-   stamp. A stale row's Phase/Stage is shown as "Airtable (stale, verified <date>)", never as fact,
-   and no Airtable-vs-Filevine "drift" is asserted from a stale row. (On 2026-11-12 about 244 of 250
-   active rows were older than 36 h.)
+7. **Every Airtable value is "unverified (mirror)"; facts come from Filevine.** `FV Verified At`
+   `fldiZ0dWTLZwZEM58` is a LAST-WRITE time only. Never call it, or any row, "verified" or "fresh":
+   the nightly verify stamp (brain SYNC-SPEC B5/B7) was never live, and the 2026-10-27 stamps are a
+   one-time B3/B4 backfill, not a check against Filevine. So read every fact that matters (phase,
+   SOL, dates, attorney, status) from Filevine directly (native `get_*`, or the emailed report),
+   and label every value shown from Airtable "unverified (mirror)", with its `FV Synced At`
+   `fldrTKNE9xyJfbVN7` / `FV Verified At` stamps described as "last written". Where the mirror and
+   Filevine differ, say "Airtable mirror differs from Filevine" and show both; Filevine is the
+   fact, and the fix is a sync replay, never a hand edit. Where Filevine was not read for a value,
+   show the mirror value as "unverified (mirror), Filevine not read".
 8. **The page is JV-only.** Never share it with staff, never send it or its contents to Perplexity
    or any other model, mailbox or chat. Firm-defense matters appear by **project ID only**.
 
@@ -135,7 +147,8 @@ Publish exactly ONE new private Artifact (do not share it, do not pin it, do not
 viewers). Title `Recon <YYYY-MM-DD>`. Sections, in order:
 
 1. Run header: date (America/Los_Angeles), Filevine userId, connectors present/missing,
-   Airtable freshness (fresh/stale counts, newest `FV Verified At`), exclusions loaded or not.
+   the Airtable mirror's newest last-write stamp (labelled "last written, not verified"; rule 7),
+   exclusions loaded or not, and which Filevine report subject/date was read.
 2. TOP: "no SOL recorded" (rule 2), then deadline disagreements (rule 1).
 3. litigation-reconcile violations (I1–I4), or "All invariants hold".
 4. Rules 3–6 findings.
