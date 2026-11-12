@@ -23,7 +23,7 @@ Tests: `/usr/bin/python3 test_fire.py`. Leaked token: Regenerate it on the routi
 
 `routines/prompts/`: the instruction text for each routine, kept here so it is reviewed in git before it is pasted
 into claude.ai. `recon` (read-only reconcile, `prompts/recon.md`) is **not created yet**: its `routines.json` trigger
-is a placeholder (`trig_TODO…`), so `cr recon` fails with an HTTP error until JV creates the routine and the real id
+is a placeholder (`trig_TODO…`), so `cr recon` fails (first at the Keychain read for `claude-routine-recon`, then with an HTTP error) until JV creates the routine and the real id
 replaces it.
 
 ## Planned
