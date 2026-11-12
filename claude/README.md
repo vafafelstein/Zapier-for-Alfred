@@ -21,6 +21,11 @@ in the Terminal app (Claude's `!` prompt can't take a pasted password and saves 
 Add the name to `routines.json`, then `python3 build_claude_routines.py` and open the built workflow.
 Tests: `/usr/bin/python3 test_fire.py`. Leaked token: Regenerate it on the routine page (immediate).
 
+`routines/prompts/`: the instruction text for each routine, kept here so it is reviewed in git before it is pasted
+into claude.ai. `recon` (read-only reconcile, `prompts/recon.md`) is **not created yet**: its `routines.json` trigger
+is a placeholder (`trig_TODO…`), so `cr recon` fails with an HTTP error until JV creates the routine and the real id
+replaces it.
+
 ## Planned
 
 `ca <text>`: a direct Anthropic API call (pay per use, key in the Keychain) for quick answers, no agent.
