@@ -1,4 +1,6 @@
 {
   "ping": {"trigger": "trig_01XttsW9zn29Diwu7vMN3drZ", "keychain": "claude-routine-ping",
-           "about": "Alfred test: replies pong + your text; no connectors"}
+           "about": "Alfred test: replies pong + your text; no connectors"},
+  "recon": {"trigger": "trig_TODOfilledAfterJVcreatesRoutine", "keychain": "claude-routine-recon",
+            "about": "TODO: routine NOT CREATED yet; trigger id is a placeholder until JV creates it. Read-only litigation-reconcile + aging-retrospective, one private JV-only page. Prompt: prompts/recon.md. Connectors: Filevine, Airtable, Microsoft 365, Dropbox"}
 }
