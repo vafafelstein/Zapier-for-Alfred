@@ -103,7 +103,7 @@ def slugify(s, limit=60):
 def parse_tags(text):
     """Merge every PPLX-TAGS line in the first HEAD_LINES lines into {key: value}."""
     tags = {}
-    for line in (text or "").lstrip("﻿").splitlines()[:HEAD_LINES]:
+    for line in (text or "").lstrip("\ufeff").splitlines()[:HEAD_LINES]:
         m = TAG_RE.match(line)
         if not m:
             continue

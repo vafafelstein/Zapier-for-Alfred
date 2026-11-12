@@ -62,7 +62,7 @@ class Base(unittest.TestCase):
 
 class Intake(Base):
     def test_header_parsing(self):
-        tags = pplx.parse_tags("﻿> **PPLX-TAGS: matter=Smith v. Jones; topic=liens**\nPPLX-TAGS: mode=deep; bogus\nbody")
+        tags = pplx.parse_tags("\ufeff> **PPLX-TAGS: matter=Smith v. Jones; topic=liens**\nPPLX-TAGS: mode=deep; bogus\nbody")
         self.assertEqual(tags, {"matter": "Smith v. Jones", "topic": "liens", "mode": "deep"})
         self.assertEqual(pplx.parse_tags("# Title\nno tags here"), {})
         self.assertEqual(pplx.folder_name(tags, "x.md", dt.date(2026, 11, 12)), "smith-v-jones-liens-2026-11-12")
